@@ -239,7 +239,7 @@ for idx, col in enumerate([col1, col2], start=1):
 # -----------------------------
 st.subheader("Compute Effective Seperation Coefficient Cf between Two Peaks")
 if len(datasets)==2 and all(datasets):
-    dataset_idx = st.selectbox("Select dataset for Rs calculation", [1,2])
+    dataset_idx = st.selectbox("Select dataset for Cf calculation", [1,2])
     x, y, popt, n_peaks = datasets[dataset_idx-1]
     
     if n_peaks >= 2:
@@ -257,8 +257,8 @@ if len(datasets)==2 and all(datasets):
                 else:
                     FWHM1 = 2.3548*wid1
                     FWHM2 = 2.3548*wid2
-                    Rs = abs(cen2-cen1)/(0.5*(FWHM1+FWHM2))
-                    st.metric("Effective Seperation Coefficient Cf", f"{Rs:.3f}")
+                    Cf = abs(cen2-cen1)/(0.5*(FWHM1+FWHM2))
+                    st.metric("Effective Seperation Coefficient Cf", f"{Cf:.3f}")
                     st.write("**Formula:** Cf = |Center2 - Center1| / (0.5*(FWHM1+FWHM2))")
                     st.write("If Cf > 1.5 → the peaks are generally considered baseline resolved (well separated).")
                     st.write("If Cf ≈ 1.0 → partial overlap (moderate separation).")
@@ -272,4 +272,4 @@ if len(datasets)==2 and all(datasets):
     else:
         st.info("Need at least 2 peaks for coefficient calculation")
 else:
-    st.info("Both datasets need to be fitted before computing Rs")
+    st.info("Both datasets need to be fitted before computing Cf")
