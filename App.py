@@ -4,7 +4,7 @@ import pandas as pd
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Gaussian Deconvolution Comparison", layout="wide")
+st.set_page_config(page_title="Comparison of input and output via gaussian curve fitting", layout="wide")
 st.title("🧪 Gaussian Deconvolution Comparison")
 
 st.markdown("""
