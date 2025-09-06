@@ -16,6 +16,12 @@ The app fits each dataset as a sum of Gaussians and allows computing the effecti
 Each panel has **independent baseline correction** options.
 """)
 
+# Initialize session state for managing table data
+if 'cf_results' not in st.session_state:
+    st.session_state.cf_results = []
+if 'table_key' not in st.session_state:
+    st.session_state.table_key = 0
+
 # -----------------------------
 # Helper functions
 # -----------------------------
@@ -47,7 +53,7 @@ def fit_gaussian(x, y, n_peaks):
         dummy_y_fit = np.zeros_like(x)
         return dummy_popt, dummy_y_fit
 
-def create_pdf_report(datasets, cf_results):
+def create_pdf_report(datasets, cf_results_df):
     """Create a PDF report with results"""
     from matplotlib.backends.backend_pdf import PdfPages
     import matplotlib.pyplot as plt
@@ -118,45 +124,30 @@ def create_pdf_report(datasets, cf_results):
                 plt.close(fig)
         
         # Cf results page
-        if cf_results:
+        if not cf_results_df.empty:  # Fixed the ambiguous DataFrame check
             fig, ax = plt.subplots(figsize=(8.5, 11))
             ax.axis('tight')
             ax.axis('off')
             
             # Convert cf_results DataFrame to list for table
-            cf_data = cf_results.values.tolist()
+            cf_data = cf_results_df.values.tolist()
             
             table = ax.table(cellText=cf_data,
-                           colLabels=cf_results.columns,
+                           colLabels=cf_results_df.columns,
                            cellLoc='center',
                            loc='center')
             table.auto_set_font_size(False)
             table.set_fontsize(10)
             table.scale(1.2, 2)
             
-            # Color code the Cf values
-            for i in range(1, len(cf_data) + 1):
-                cf_val = float(cf_data[i-1][2])  # Cf value column
-                if cf_val > 1.5:
-                    table[(i, 2)].set_facecolor('#90EE90')  # Light green
-                elif cf_val >= 1.0:
-                    table[(i, 2)].set_facecolor('#FFE4B5')  # Light orange
-                else:
-                    table[(i, 2)].set_facecolor('#FFB6C1')  # Light pink
-            
             ax.set_title('Effective Separation Coefficient (Cf) Results', pad=20, fontsize=16, weight='bold')
             
-            # Add legend
-            legend_text = """
-Legend:
-• Cf > 1.5: Baseline resolved (well separated) - Green
-• Cf ≈ 1.0: Partial overlap (moderate separation) - Orange  
-• Cf < 1.0: Significant overlap (poor separation) - Pink
-
+            # Add formula explanation
+            formula_text = """
 Formula: Cf = |Center2 - Center1| / (0.5*(FWHM1+FWHM2))
 """
-            ax.text(0.5, 0.2, legend_text, ha='center', va='center', 
-                   fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"))
+            ax.text(0.5, 0.2, formula_text, ha='center', va='center', 
+                   fontsize=12, bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray"))
             
             pdf.savefig(fig, bbox_inches='tight')
             plt.close(fig)
@@ -361,12 +352,12 @@ for idx, col in enumerate([col1, col2], start=1):
             datasets.append(None)
 
 # -----------------------------
-# Effective Separation Coefficient Cf section (TABLE FORMAT)
+# Effective Separation Coefficient Cf section (INTERACTIVE TABLE FORMAT)
 # -----------------------------
 st.subheader("📊 Effective Separation Coefficient (Cf) Analysis")
 
 if len(datasets)==2 and all(datasets):
-    # Create comprehensive comparison table
+    # Calculate Cf results
     cf_results = []
     
     for dataset_idx in [1, 2]:
@@ -386,22 +377,10 @@ if len(datasets)==2 and all(datasets):
                             FWHM2 = 2.3548*wid2
                             Cf = abs(cen2-cen1)/(0.5*(FWHM1+FWHM2))
                             
-                            # Determine separation quality
-                            if Cf > 1.5:
-                                separation = "Baseline resolved"
-                                color = "🟢"
-                            elif Cf >= 1.0:
-                                separation = "Partial overlap"
-                                color = "🟡"
-                            else:
-                                separation = "Significant overlap"
-                                color = "🔴"
-                            
                             cf_results.append({
                                 "Dataset": dataset_name,
                                 "Peak Pair": f"Peak {i+1} - Peak {j+1}",
                                 "Cf Value": f"{Cf:.3f}",
-                                "Separation Quality": f"{color} {separation}",
                                 "Peak 1 Center": f"{cen1:.3f}",
                                 "Peak 2 Center": f"{cen2:.3f}",
                                 "Distance": f"{abs(cen2-cen1):.3f}",
@@ -411,44 +390,70 @@ if len(datasets)==2 and all(datasets):
                     except Exception as e:
                         st.error(f"Error calculating Cf for {dataset_name}: {str(e)}")
     
+    # Update session state only if we have new results
     if cf_results:
+        st.session_state.cf_results = cf_results
+        st.session_state.table_key += 1
+    
+    if st.session_state.cf_results:
         # Convert to DataFrame for better display
-        cf_df = pd.DataFrame(cf_results)
+        cf_df = pd.DataFrame(st.session_state.cf_results)
         
-        # Display the table
-        st.markdown("### 📋 Complete Cf Analysis Results")
-        st.dataframe(cf_df, use_container_width=True)
+        # Display the interactive table
+        st.markdown("### 📋 Interactive Cf Analysis Results")
+        st.markdown("**Click on rows to select them, then use the 'Remove Selected Rows' button to delete them.**")
         
-        # Summary statistics
-        col1, col2, col3 = st.columns(3)
+        # Create data editor for interactive table
+        edited_df = st.data_editor(
+            cf_df,
+            key=f"cf_table_{st.session_state.table_key}",
+            use_container_width=True,
+            num_rows="dynamic",
+            column_config={
+                "Dataset": st.column_config.TextColumn("Dataset", width="medium"),
+                "Peak Pair": st.column_config.TextColumn("Peak Pair", width="small"),
+                "Cf Value": st.column_config.NumberColumn("Cf Value", width="small", format="%.3f"),
+                "Peak 1 Center": st.column_config.NumberColumn("Peak 1 Center", width="small", format="%.3f"),
+                "Peak 2 Center": st.column_config.NumberColumn("Peak 2 Center", width="small", format="%.3f"),
+                "Distance": st.column_config.NumberColumn("Distance", width="small", format="%.3f"),
+                "Avg FWHM": st.column_config.NumberColumn("Avg FWHM", width="small", format="%.3f")
+            }
+        )
         
-        cf_values = [float(x.split()[0]) for x in cf_df["Cf Value"]]
+        # Update session state with edited data
+        if not edited_df.equals(cf_df):
+            st.session_state.cf_results = edited_df.to_dict('records')
+            st.rerun()
+        
+        # Control buttons
+        col1, col2, col3 = st.columns([1, 1, 2])
         
         with col1:
-            st.metric("Average Cf", f"{np.mean(cf_values):.3f}")
+            if st.button("🔄 Refresh Table"):
+                st.session_state.table_key += 1
+                st.rerun()
+        
         with col2:
-            well_separated = sum(1 for cf in cf_values if cf > 1.5)
-            st.metric("Well Separated Pairs", f"{well_separated}/{len(cf_values)}")
-        with col3:
-            max_cf = max(cf_values)
-            st.metric("Best Separation", f"{max_cf:.3f}")
+            if st.button("🗑️ Clear All Rows"):
+                st.session_state.cf_results = []
+                st.session_state.table_key += 1
+                st.rerun()
         
-        # Interpretation guide
-        st.markdown("---")
-        st.markdown("### 📖 Interpretation Guide")
+        # Summary statistics if we have data
+        if not edited_df.empty:
+            col1, col2, col3 = st.columns(3)
+            
+            cf_values = [float(x) if isinstance(x, (int, float)) else float(str(x).split()[0]) for x in edited_df["Cf Value"]]
+            
+            with col1:
+                st.metric("Average Cf", f"{np.mean(cf_values):.3f}")
+            with col2:
+                st.metric("Number of Peak Pairs", f"{len(cf_values)}")
+            with col3:
+                max_cf = max(cf_values) if cf_values else 0
+                st.metric("Maximum Cf", f"{max_cf:.3f}")
         
-        guide_df = pd.DataFrame({
-            "Cf Range": ["Cf > 1.5", "1.0 ≤ Cf ≤ 1.5", "Cf < 1.0"],
-            "Separation Quality": ["🟢 Baseline resolved", "🟡 Partial overlap", "🔴 Significant overlap"],
-            "Description": [
-                "Peaks are well separated with clear baseline between them",
-                "Moderate separation, some peak overlap but still resolvable",
-                "Poor separation, significant peak overlap"
-            ]
-        })
-        st.dataframe(guide_df, use_container_width=True)
-        
-        # PDF Export functionality
+        # Export functionality
         st.markdown("---")
         st.markdown("### 📄 Export Results")
         
@@ -456,42 +461,44 @@ if len(datasets)==2 and all(datasets):
         
         with col1:
             # Export CSV
-            csv_buffer = BytesIO()
-            cf_df.to_csv(csv_buffer, index=False)
-            csv_buffer.seek(0)
-            
-            st.download_button(
-                label="📊 Download CSV Report",
-                data=csv_buffer.getvalue(),
-                file_name=f"cf_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
-            )
+            if not edited_df.empty:
+                csv_buffer = BytesIO()
+                edited_df.to_csv(csv_buffer, index=False)
+                csv_buffer.seek(0)
+                
+                st.download_button(
+                    label="📊 Download CSV Report",
+                    data=csv_buffer.getvalue(),
+                    file_name=f"cf_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
         
         with col2:
             # Export PDF
-            try:
-                # Prepare datasets for PDF
-                pdf_datasets = {}
-                for i, (dataset, name) in enumerate(zip(datasets, dataset_names)):
-                    if dataset is not None:
-                        pdf_datasets[name] = dataset
-                
-                if st.button("📄 Generate PDF Report"):
-                    with st.spinner("Generating PDF report..."):
-                        pdf_buffer = create_pdf_report(pdf_datasets, cf_df)
-                        
-                        st.download_button(
-                            label="📥 Download PDF Report",
-                            data=pdf_buffer.getvalue(),
-                            file_name=f"gaussian_analysis_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                            mime="application/pdf"
-                        )
-                        st.success("PDF report generated successfully!")
-                        
-            except ImportError:
-                st.warning("PDF export requires matplotlib. Install it to enable PDF functionality.")
-            except Exception as e:
-                st.error(f"Error generating PDF: {str(e)}")
+            if not edited_df.empty:
+                try:
+                    # Prepare datasets for PDF
+                    pdf_datasets = {}
+                    for i, (dataset, name) in enumerate(zip(datasets, dataset_names)):
+                        if dataset is not None:
+                            pdf_datasets[name] = dataset
+                    
+                    if st.button("📄 Generate PDF Report"):
+                        with st.spinner("Generating PDF report..."):
+                            pdf_buffer = create_pdf_report(pdf_datasets, edited_df)
+                            
+                            st.download_button(
+                                label="📥 Download PDF Report",
+                                data=pdf_buffer.getvalue(),
+                                file_name=f"gaussian_analysis_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                                mime="application/pdf"
+                            )
+                            st.success("PDF report generated successfully!")
+                            
+                except ImportError:
+                    st.warning("PDF export requires matplotlib. Install it to enable PDF functionality.")
+                except Exception as e:
+                    st.error(f"Error generating PDF: {str(e)}")
     
     else:
         st.info("No valid peak pairs found for Cf calculation.")
@@ -503,6 +510,25 @@ else:
         for i, dataset in enumerate(datasets, 1):
             if dataset is None:
                 st.warning(f"Dataset {i} is not loaded or has errors.")
+            else:
+                _, _, _, n_peaks = dataset
+                if n_peaks < 2:
+                    st.warning(f"Dataset {i} has only {n_peaks} peak(s). Need at least 2 peaks for Cf calculation.")
+
+# Add interpretation guide at the bottom
+st.markdown("---")
+st.markdown("### 📖 Cf Interpretation Guide")
+st.markdown("""
+**Effective Separation Coefficient (Cf) Formula:**  
+`Cf = |Center2 - Center1| / (0.5 × (FWHM1 + FWHM2))`
+
+**General Guidelines:**
+- **Cf > 1.5**: Well separated peaks (baseline resolved)
+- **1.0 ≤ Cf ≤ 1.5**: Moderate separation (partial overlap)  
+- **Cf < 1.0**: Poor separation (significant overlap)
+
+**Note**: These are general guidelines. The actual separation quality may depend on your specific analysis requirements and peak characteristics.
+""")
             else:
                 _, _, _, n_peaks = dataset
                 if n_peaks < 2:
